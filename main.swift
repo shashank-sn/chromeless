@@ -16,6 +16,63 @@ import Cocoa
 import Security
 import WebKit
 
+// MARK: - Shortcuts
+
+struct ShortcutDef { let key: String; let modifiers: NSEvent.ModifierFlags }
+
+let shortcutDefaults: [String: ShortcutDef] = [
+    "openLocation": ShortcutDef(key: "l", modifiers: .command),
+    "saveSnapshot": ShortcutDef(key: "s", modifiers: [.command, .shift]),
+    "reloadPage":   ShortcutDef(key: "r", modifiers: .command),
+    "hardReload":   ShortcutDef(key: "r", modifiers: [.command, .shift]),
+    "zoomIn":       ShortcutDef(key: "=", modifiers: .command),
+    "zoomOut":      ShortcutDef(key: "-", modifiers: .command),
+    "actualSize":   ShortcutDef(key: "0", modifiers: .command),
+    "goBack":       ShortcutDef(key: "[", modifiers: .command),
+    "goForward":    ShortcutDef(key: "]", modifiers: .command),
+    "togglePin":    ShortcutDef(key: "p", modifiers: .command),
+    "copyURL":      ShortcutDef(key: "c", modifiers: [.command, .shift]),
+    "showHelp":     ShortcutDef(key: "?", modifiers: .command),
+]
+
+func resolveShortcut(_ name: String, defaultKey: String, defaultModifiers: NSEvent.ModifierFlags) -> (String, NSEvent.ModifierFlags) {
+    guard let dict = UserDefaults.standard.dictionary(forKey: "shortcuts"),
+          let raw = dict[name] as? String, !raw.isEmpty else {
+        return (defaultKey, defaultModifiers)
+    }
+    var modifiers: NSEvent.ModifierFlags = .command
+    var key = raw.lowercased()
+    for (label, flag) in [("shift+", NSEvent.ModifierFlags.shift),
+                          ("option+", .option),
+                          ("control+", .control),
+                          ("cmd+", .command),
+                          ("⌘", .command),
+                          ("⇧", .shift),
+                          ("⌥", .option),
+                          ("⌃", .control)] {
+        if key.hasPrefix(label.lowercased()) {
+            modifiers.insert(flag)
+            key.removeFirst(label.count)
+        }
+    }
+    if modifiers == .command { modifiers = defaultModifiers.intersection([.command, .shift, .option, .control]) }
+    if modifiers.isEmpty { modifiers = .command }
+    return (key, modifiers)
+}
+
+// MARK: - Appearance
+
+enum AppearancePreference: String { case system, dark, light }
+
+func resolveAppearance() -> NSAppearance? {
+    let key = UserDefaults.standard.string(forKey: "appearance") ?? "system"
+    switch key {
+    case "dark":  return NSAppearance(named: .darkAqua)
+    case "light": return NSAppearance(named: .aqua)
+    default:      return nil
+    }
+}
+
 // MARK: - Passkey capability
 
 // WKWebView performs WebAuthn (passkeys via iCloud Keychain / Touch ID) only for
@@ -118,23 +175,31 @@ let launchOptions = parseLaunchOptions()
 
 let startPageHTML = """
 <!doctype html>
-<html><head><meta charset="utf-8"><title>chromeless</title>
+<html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>chromeless</title>
 <style>
   html, body { height: 100%; margin: 0; }
-  body { background: #0a0a0e; color: #e8e8ee; font: 15px/1.6 -apple-system, system-ui;
+  body { background: #f5f5f7; color: #1d1d1f; font: 15px/1.6 -apple-system, system-ui;
          display: flex; align-items: center; justify-content: center;
          -webkit-user-select: none; cursor: default; }
   main { text-align: center; max-width: 680px; padding: 48px; animation: in .6s ease-out; }
   @keyframes in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
-  h1 { font-size: 46px; font-weight: 650; letter-spacing: -.02em; margin: 0 0 6px; color: #fff; }
-  p.tag { color: #85858f; margin: 0 0 46px; font-size: 16px; }
+  h1 { font-size: 46px; font-weight: 650; letter-spacing: -.02em; margin: 0 0 6px; color: #1d1d1f; }
+  p.tag { color: #6e6e73; margin: 0 0 46px; font-size: 16px; }
   .keys { display: grid; grid-template-columns: auto auto; gap: 11px 22px;
-          justify-content: center; text-align: left; font-size: 13.5px; color: #b9b9c4; }
+          justify-content: center; text-align: left; font-size: 13.5px; color: #6e6e73; }
   .k { text-align: right; }
-  kbd { font: 600 12px ui-monospace, "SF Mono", monospace; background: #1b1b22;
-        border: 1px solid #2c2c36; border-bottom-width: 2px; border-radius: 6px;
-        padding: 2.5px 8px; color: #e8e8ee; white-space: nowrap; }
-  footer { margin-top: 48px; color: #55555e; font-size: 12px; }
+  kbd { font: 600 12px ui-monospace, "SF Mono", monospace; background: #e8e8ed;
+        border: 1px solid #d2d2d7; border-bottom-width: 2px; border-radius: 6px;
+        padding: 2.5px 8px; color: #1d1d1f; white-space: nowrap; }
+  footer { margin-top: 48px; color: #aeaeb2; font-size: 12px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0a0a0e; color: #e8e8ee; }
+    h1 { color: #fff; }
+    p.tag { color: #85858f; }
+    .keys { color: #b9b9c4; }
+    kbd { background: #1b1b22; border-color: #2c2c36; color: #e8e8ee; }
+    footer { color: #55555e; }
+  }
 </style></head>
 <body><main>
   <h1>chromeless</h1>
@@ -253,8 +318,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.minSize = NSSize(width: 320, height: 220)
-        window.backgroundColor = NSColor(calibratedWhite: 0.04, alpha: 1)
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = .windowBackgroundColor
+        if let appearance = resolveAppearance() { window.appearance = appearance }
         window.collectionBehavior.insert(.fullScreenPrimary)
         window.acceptsMouseMovedEvents = true
         window.delegate = self
@@ -271,7 +336,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
-        webView.underPageBackgroundColor = NSColor(calibratedWhite: 0.04, alpha: 1)
+        webView.underPageBackgroundColor = .windowBackgroundColor
         if #available(macOS 13.3, *) { webView.isInspectable = true }
         container.addSubview(webView)
 
@@ -775,12 +840,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fileMenu = NSMenu(title: "File")
         let newWin = fileMenu.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n")
         newWin.target = self
-        fileMenu.addItem(withTitle: "Open Location…",
-                         action: #selector(BrowserWindowController.openLocation(_:)), keyEquivalent: "l")
+        let (olKey, olMods) = resolveShortcut("openLocation", defaultKey: "l", defaultModifiers: .command)
+        let olItem = fileMenu.addItem(withTitle: "Open Location…",
+                         action: #selector(BrowserWindowController.openLocation(_:)), keyEquivalent: olKey)
+        olItem.keyEquivalentModifierMask = olMods
         fileMenu.addItem(.separator())
+        let (snapKey, snapMods) = resolveShortcut("saveSnapshot", defaultKey: "s", defaultModifiers: [.command, .shift])
         let snap = fileMenu.addItem(withTitle: "Save Snapshot to Desktop",
-                                    action: #selector(BrowserWindowController.saveSnapshot(_:)), keyEquivalent: "s")
-        snap.keyEquivalentModifierMask = [.command, .shift]
+                                    action: #selector(BrowserWindowController.saveSnapshot(_:)), keyEquivalent: snapKey)
+        snap.keyEquivalentModifierMask = snapMods
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         main.addItem(withTitle: "File", action: nil, keyEquivalent: "").submenu = fileMenu
@@ -794,24 +862,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenu.addItem(.separator())
+        let (copyKey, copyMods) = resolveShortcut("copyURL", defaultKey: "c", defaultModifiers: [.command, .shift])
         let copyURL = editMenu.addItem(withTitle: "Copy Current URL",
-                                       action: #selector(BrowserWindowController.copyPageURL(_:)), keyEquivalent: "c")
-        copyURL.keyEquivalentModifierMask = [.command, .shift]
+                                       action: #selector(BrowserWindowController.copyPageURL(_:)), keyEquivalent: copyKey)
+        copyURL.keyEquivalentModifierMask = copyMods
         main.addItem(withTitle: "Edit", action: nil, keyEquivalent: "").submenu = editMenu
 
         let viewMenu = NSMenu(title: "View")
-        viewMenu.addItem(withTitle: "Reload Page",
-                         action: #selector(BrowserWindowController.reloadPage(_:)), keyEquivalent: "r")
+        let (rlKey, rlMods) = resolveShortcut("reloadPage", defaultKey: "r", defaultModifiers: .command)
+        let rlItem = viewMenu.addItem(withTitle: "Reload Page",
+                         action: #selector(BrowserWindowController.reloadPage(_:)), keyEquivalent: rlKey)
+        rlItem.keyEquivalentModifierMask = rlMods
+        let (hrKey, hrMods) = resolveShortcut("hardReload", defaultKey: "r", defaultModifiers: [.command, .shift])
         let hardReload = viewMenu.addItem(withTitle: "Reload Ignoring Cache",
-                                          action: #selector(BrowserWindowController.hardReloadPage(_:)), keyEquivalent: "r")
-        hardReload.keyEquivalentModifierMask = [.command, .shift]
+                                          action: #selector(BrowserWindowController.hardReloadPage(_:)), keyEquivalent: hrKey)
+        hardReload.keyEquivalentModifierMask = hrMods
         viewMenu.addItem(.separator())
-        viewMenu.addItem(withTitle: "Zoom In",
-                         action: #selector(BrowserWindowController.zoomInPage(_:)), keyEquivalent: "=")
-        viewMenu.addItem(withTitle: "Zoom Out",
-                         action: #selector(BrowserWindowController.zoomOutPage(_:)), keyEquivalent: "-")
-        viewMenu.addItem(withTitle: "Actual Size",
-                         action: #selector(BrowserWindowController.resetZoom(_:)), keyEquivalent: "0")
+        let (ziKey, ziMods) = resolveShortcut("zoomIn", defaultKey: "=", defaultModifiers: .command)
+        let ziItem = viewMenu.addItem(withTitle: "Zoom In",
+                         action: #selector(BrowserWindowController.zoomInPage(_:)), keyEquivalent: ziKey)
+        ziItem.keyEquivalentModifierMask = ziMods
+        let (zoKey, zoMods) = resolveShortcut("zoomOut", defaultKey: "-", defaultModifiers: .command)
+        let zoItem = viewMenu.addItem(withTitle: "Zoom Out",
+                         action: #selector(BrowserWindowController.zoomOutPage(_:)), keyEquivalent: zoKey)
+        zoItem.keyEquivalentModifierMask = zoMods
+        let (zrKey, zrMods) = resolveShortcut("actualSize", defaultKey: "0", defaultModifiers: .command)
+        let zrItem = viewMenu.addItem(withTitle: "Actual Size",
+                         action: #selector(BrowserWindowController.resetZoom(_:)), keyEquivalent: zrKey)
+        zrItem.keyEquivalentModifierMask = zrMods
         viewMenu.addItem(.separator())
         let fullScreen = viewMenu.addItem(withTitle: "Enter Full Screen",
                                           action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
@@ -819,24 +897,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(withTitle: "View", action: nil, keyEquivalent: "").submenu = viewMenu
 
         let historyMenu = NSMenu(title: "History")
-        historyMenu.addItem(withTitle: "Back",
-                            action: #selector(BrowserWindowController.goBackAction(_:)), keyEquivalent: "[")
-        historyMenu.addItem(withTitle: "Forward",
-                            action: #selector(BrowserWindowController.goForwardAction(_:)), keyEquivalent: "]")
+        let (bkKey, bkMods) = resolveShortcut("goBack", defaultKey: "[", defaultModifiers: .command)
+        let bkItem = historyMenu.addItem(withTitle: "Back",
+                            action: #selector(BrowserWindowController.goBackAction(_:)), keyEquivalent: bkKey)
+        bkItem.keyEquivalentModifierMask = bkMods
+        let (fwKey, fwMods) = resolveShortcut("goForward", defaultKey: "]", defaultModifiers: .command)
+        let fwItem = historyMenu.addItem(withTitle: "Forward",
+                            action: #selector(BrowserWindowController.goForwardAction(_:)), keyEquivalent: fwKey)
+        fwItem.keyEquivalentModifierMask = fwMods
         main.addItem(withTitle: "History", action: nil, keyEquivalent: "").submenu = historyMenu
 
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         windowMenu.addItem(.separator())
-        windowMenu.addItem(withTitle: "Pin on Top",
-                           action: #selector(BrowserWindowController.togglePin(_:)), keyEquivalent: "p")
+        let (pinKey, pinMods) = resolveShortcut("togglePin", defaultKey: "p", defaultModifiers: .command)
+        let pinItem = windowMenu.addItem(withTitle: "Pin on Top",
+                           action: #selector(BrowserWindowController.togglePin(_:)), keyEquivalent: pinKey)
+        pinItem.keyEquivalentModifierMask = pinMods
         main.addItem(withTitle: "Window", action: nil, keyEquivalent: "").submenu = windowMenu
         NSApp.windowsMenu = windowMenu
 
         let helpMenu = NSMenu(title: "Help")
-        helpMenu.addItem(withTitle: "Chromeless Help",
-                         action: #selector(BrowserWindowController.showHelpPage(_:)), keyEquivalent: "?")
+        let (hlpKey, hlpMods) = resolveShortcut("showHelp", defaultKey: "?", defaultModifiers: .command)
+        let hlpItem = helpMenu.addItem(withTitle: "Chromeless Help",
+                         action: #selector(BrowserWindowController.showHelpPage(_:)), keyEquivalent: hlpKey)
+        hlpItem.keyEquivalentModifierMask = hlpMods
         main.addItem(withTitle: "Help", action: nil, keyEquivalent: "").submenu = helpMenu
         NSApp.helpMenu = helpMenu
 
