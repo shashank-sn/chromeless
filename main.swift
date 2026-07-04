@@ -223,7 +223,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         conf.preferences.isElementFullscreenEnabled = true
         conf.mediaTypesRequiringUserActionForPlayback = []
         conf.allowsAirPlayForMediaPlayback = true
-        conf.applicationNameForUserAgent = "Version/26.0 Safari/605.1.15"
         if !hasPasskeyEntitlement {
             let hideWebAuthn = WKUserScript(
                 source: """
@@ -512,7 +511,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
 
     // MARK: Snapshots
 
-    private var pointScale: CGFloat { NSScreen.main?.backingScaleFactor ?? 2.0 }
+    private var pointScale: CGFloat { window?.screen?.backingScaleFactor ?? NSScreen.screens.first?.backingScaleFactor ?? 2.0 }
 
     private func writePNG(from image: NSImage, to path: String) -> (Int, Int)? {
         guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
