@@ -46,6 +46,10 @@ func smartURL(_ input: String) -> URL? {
     for host in ["localhost", "127.0.0.1", "0.0.0.0", "[::1]"] where lower.hasPrefix(host) {
         return URL(string: "http://" + t)
     }
+    // Bare IPv4 address → http:// (LAN devices rarely have valid HTTPS)
+    if let _ = t.range(of: #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$"#, options: .regularExpression) {
+        return URL(string: "http://" + t)
+    }
     if !t.contains(" "), t.contains(".") { return URL(string: "https://" + t) }
     let q = t.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? t
     return URL(string: "https://www.google.com/search?q=" + q)
@@ -237,6 +241,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             conf.userContentController.addUserScript(hideWebAuthn)
         }
         webView = BrowserWebView(frame: .zero, configuration: conf)
+        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
         snapJob = snap
 
         let contentSize = size ?? NSSize(width: 1160, height: 760)
@@ -313,8 +318,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 let p = event.locationInWindow
                 let nearCorner = p.y > contentView.bounds.height - 44 && p.x < 96
                 self.setTrafficLights(visible: self.isFullScreen || nearCorner)
-            } else if !self.hud.isHidden {
-                let p = self.window!.contentView!.convert(event.locationInWindow, from: nil)
+            } else if !self.hud.isHidden,
+                      let contentView = self.window?.contentView {
+                let p = contentView.convert(event.locationInWindow, from: nil)
                 if !self.hud.frame.contains(p) { self.hideHUD() }
             }
             return event
@@ -506,13 +512,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
 
     // MARK: Snapshots
 
+    private var pointScale: CGFloat { NSScreen.main?.backingScaleFactor ?? 2.0 }
+
     private func writePNG(from image: NSImage, to path: String) -> (Int, Int)? {
         guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
               let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
         else { return nil }
         do {
             try data.write(to: URL(fileURLWithPath: path))
-            return (cg.width, cg.height)
+            let w = Int((CGFloat(cg.width) / pointScale).rounded())
+            let h = Int((CGFloat(cg.height) / pointScale).rounded())
+            return (w, h)
         } catch {
             return nil
         }
@@ -559,8 +569,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let path = desktop.appendingPathComponent(name).path
         webView.takeSnapshot(with: nil) { [weak self] image, _ in
             guard let self else { return }
-            if let image, self.writePNG(from: image, to: path) != nil {
-                self.showToast("Saved “\(name)” to Desktop")
+            if let image, let (w, h) = self.writePNG(from: image, to: path) {
+                self.showToast("Saved “\(name)” — \(w)×\(h) px")
             } else {
                 self.showToast("Snapshot failed")
             }
