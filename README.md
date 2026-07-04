@@ -49,6 +49,49 @@ It loads the page, waits for it to settle, writes a Retina PNG, and exits.
 ## Notes
 
 - Cookies and logins persist (kept in `~/Library/WebKit/com.chromeless.app/`), so YouTube stays signed in.
+- Chromeless follows the system appearance by default (light mode in light mode, dark mode in dark mode).
+
+### Appearance
+
+Override the appearance with `defaults`:
+
+```sh
+defaults write com.chromeless.app appearance dark   # force dark
+defaults write com.chromeless.app appearance light  # force light
+defaults delete com.chromeless.app appearance       # follow system
+```
+
+### Customizable shortcuts
+
+Every chromeless-specific keyboard shortcut can be overridden with `defaults`. Each key is a single character or key name (lowercase) with optional modifier prefixes (`cmd+`, `shift+`, `option+`, `control+`):
+
+```sh
+defaults write com.chromeless.app shortcuts -dict \
+  openLocation "k" \
+  zoomIn "=" \
+  togglePin "shift+cmd+p"
+
+defaults delete com.chromeless.app shortcuts  # reset to defaults
+```
+
+Customizable actions:
+
+| Action | Default | Description |
+|--------|---------|-------------|
+| `openLocation` | `⌘L` | Search or enter a URL |
+| `saveSnapshot` | `⇧⌘S` | Snapshot the page → Desktop |
+| `reloadPage` | `⌘R` | Reload |
+| `hardReload` | `⇧⌘R` | Reload ignoring cache |
+| `zoomIn` | `⌘=` | Zoom in |
+| `zoomOut` | `⌘-` | Zoom out |
+| `actualSize` | `⌘0` | Actual size |
+| `goBack` | `⌘[` | Back |
+| `goForward` | `⌘]` | Forward |
+| `togglePin` | `⌘P` | Pin on top |
+| `copyURL` | `⇧⌘C` | Copy current URL |
+| `showHelp` | `⌘?` | Chromeless Help |
+
+Standard Cocoa shortcuts (`⌘C` copy, `⌘V` paste, `⌘Q` quit, `⌘W` close, `⌘M` minimize, `⌘H` hide) are not customizable. Changes take effect on app relaunch.
 
 ## Passkeys
 

@@ -40,23 +40,26 @@ func resolveShortcut(_ name: String, defaultKey: String, defaultModifiers: NSEve
           let raw = dict[name] as? String, !raw.isEmpty else {
         return (defaultKey, defaultModifiers)
     }
-    var modifiers: NSEvent.ModifierFlags = .command
+    var modifiers: NSEvent.ModifierFlags = []
     var key = raw.lowercased()
-    for (label, flag) in [("shift+", NSEvent.ModifierFlags.shift),
-                          ("option+", .option),
-                          ("control+", .control),
-                          ("cmd+", .command),
-                          ("⌘", .command),
-                          ("⇧", .shift),
-                          ("⌥", .option),
-                          ("⌃", .control)] {
-        if key.hasPrefix(label.lowercased()) {
-            modifiers.insert(flag)
-            key.removeFirst(label.count)
+    let labels: [(String, NSEvent.ModifierFlags)] = [
+        ("shift+", .shift), ("option+", .option), ("control+", .control), ("cmd+", .command),
+        ("⇧", .shift), ("⌥", .option), ("⌃", .control), ("⌘", .command),
+    ]
+    // Scan repeatedly until no modifier prefix is left to strip
+    var stripped = true
+    while stripped {
+        stripped = false
+        for (label, flag) in labels {
+            if key.hasPrefix(label.lowercased()) {
+                modifiers.insert(flag)
+                key.removeFirst(label.count)
+                stripped = true
+            }
         }
     }
-    if modifiers == .command { modifiers = defaultModifiers.intersection([.command, .shift, .option, .control]) }
-    if modifiers.isEmpty { modifiers = .command }
+    if key.isEmpty { return (defaultKey, defaultModifiers) }
+    if modifiers.isEmpty { modifiers = defaultModifiers }
     return (key, modifiers)
 }
 
